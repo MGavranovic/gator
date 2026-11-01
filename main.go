@@ -1,13 +1,20 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
+	"github.com/google/uuid"
 	"os"
+	"time"
 
 	"github.com/MGavranovic/gator/internal/config"
+	"github.com/MGavranovic/gator/internal/database"
+	_ "github.com/lib/pq"
 )
 
 type state struct {
+	db  *database.Queries
 	cfg *config.Config
 }
 
@@ -24,10 +31,18 @@ func main() {
 	conf := config.Read()
 	s := state{cfg: &conf}
 
+	db, errDB := sql.Open("postgres", conf.DB_URL)
+	if errDB != nil {
+		fmt.Println(errDB)
+	}
+	dbQueries := database.New(db)
+	s.db = dbQueries
+
 	cmds := commands{
 		handler: map[string]func(*state, command) error{},
 	}
 	cmds.register("login", handleLogin)
+	cmds.register("register", handleRegister)
 
 	if len(os.Args) < 2 {
 		fmt.Println("Not enough args")
@@ -54,7 +69,41 @@ func handleLogin(s *state, cmd command) error {
 	if err := s.cfg.SetUser(cmd.args[0]); err != nil {
 		return err
 	}
+
+	user, err := s.db.GetUser(context.Background(), cmd.args[0])
+	if err != nil {
+		fmt.Println(err)
+	}
+	if cmd.args[0] != user.Name {
+		os.Exit(1)
+	}
+
 	fmt.Println("The user has been set")
+	return nil
+}
+
+func handleRegister(s *state, cmd command) error {
+	if len(cmd.args) != 1 {
+		return fmt.Errorf("Name is required")
+	}
+	// check if user exists
+	user2, err2 := s.db.GetUser(context.Background(), cmd.args[0])
+	if err2 != nil {
+		fmt.Println(err2)
+	}
+	if cmd.args[0] == user2.Name {
+		os.Exit(1)
+	}
+
+	// create user
+	user, err := s.db.CreateUser(context.Background(), database.CreateUserParams{ID: uuid.New(), CreatedAt: time.Now(), UpdatedAt: time.Now(), Name: cmd.args[0]})
+	if err != nil {
+		return fmt.Errorf("Error creating a user")
+	}
+
+	s.cfg.SetUser(user.Name)
+
+	fmt.Println("User was created", user)
 	return nil
 }
 
