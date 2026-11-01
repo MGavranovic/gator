@@ -43,6 +43,7 @@ func main() {
 	}
 	cmds.register("login", handleLogin)
 	cmds.register("register", handleRegister)
+	cmds.register("reset", handleReset)
 
 	if len(os.Args) < 2 {
 		fmt.Println("Not enough args")
@@ -98,12 +99,20 @@ func handleRegister(s *state, cmd command) error {
 	// create user
 	user, err := s.db.CreateUser(context.Background(), database.CreateUserParams{ID: uuid.New(), CreatedAt: time.Now(), UpdatedAt: time.Now(), Name: cmd.args[0]})
 	if err != nil {
-		return fmt.Errorf("Error creating a user")
+		return fmt.Errorf("Error creating a user: %s", err)
 	}
 
 	s.cfg.SetUser(user.Name)
 
 	fmt.Println("User was created", user)
+	return nil
+}
+
+func handleReset(s *state, cmd command) error {
+	err := s.db.DeleteAllUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("Error clearing users table: %s", err)
+	}
 	return nil
 }
 
