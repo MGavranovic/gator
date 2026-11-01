@@ -44,6 +44,7 @@ func main() {
 	cmds.register("login", handleLogin)
 	cmds.register("register", handleRegister)
 	cmds.register("reset", handleReset)
+	cmds.register("users", handleGetUsers)
 
 	if len(os.Args) < 2 {
 		fmt.Println("Not enough args")
@@ -112,6 +113,20 @@ func handleReset(s *state, cmd command) error {
 	err := s.db.DeleteAllUsers(context.Background())
 	if err != nil {
 		return fmt.Errorf("Error clearing users table: %s", err)
+	}
+	return nil
+}
+
+func handleGetUsers(s *state, cmd command) error {
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("Error getting all users from users table: %s", err)
+	}
+	for _, u := range users {
+		if u.Name == s.cfg.Current_user_name {
+			fmt.Printf("* %s (current)", u.Name)
+		}
+		fmt.Printf("* %s", u.Name)
 	}
 	return nil
 }
