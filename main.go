@@ -3,10 +3,15 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"fmt"
-	"github.com/google/uuid"
+	"html"
+	"io"
+	"net/http"
 	"os"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/MGavranovic/gator/internal/config"
 	"github.com/MGavranovic/gator/internal/database"
@@ -27,6 +32,22 @@ type commands struct {
 	handler map[string]func(*state, command) error
 }
 
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
+
 func main() {
 	conf := config.Read()
 	s := state{cfg: &conf}
@@ -45,6 +66,7 @@ func main() {
 	cmds.register("register", handleRegister)
 	cmds.register("reset", handleReset)
 	cmds.register("users", handleGetUsers)
+	cmds.register("agg", handeFetchRSSFeed)
 
 	if len(os.Args) < 2 {
 		fmt.Println("Not enough args")
@@ -128,6 +150,55 @@ func handleGetUsers(s *state, cmd command) error {
 		}
 		fmt.Printf("* %s", u.Name)
 	}
+	return nil
+}
+
+func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
+	// make req
+	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Error: %w", err)
+	}
+	req.Header.Set("User-Agent", "gator")
+
+	// send req to client
+	client := http.Client{}
+	res, errRes := client.Do(req)
+	if errRes != nil {
+		return nil, fmt.Errorf("Error %w:", errRes)
+	}
+
+	// read resp
+	data, errData := io.ReadAll(res.Body)
+	if errData != nil {
+		return nil, fmt.Errorf("Error %w:", errData)
+	}
+	defer res.Body.Close()
+
+	// unmarshal resp
+	var feed RSSFeed
+	errUnMarsh := xml.Unmarshal(data, &feed)
+	if errUnMarsh != nil {
+		return nil, errUnMarsh
+	}
+
+	feed.Channel.Title = html.UnescapeString(feed.Channel.Title)
+	feed.Channel.Description = html.UnescapeString(feed.Channel.Description)
+
+	for i := range feed.Channel.Item {
+		feed.Channel.Item[i].Title = html.UnescapeString(feed.Channel.Item[i].Title)
+		feed.Channel.Item[i].Description = html.UnescapeString(feed.Channel.Item[i].Description)
+	}
+
+	return &feed, nil
+}
+
+func handeFetchRSSFeed(s *state, cmd command) error {
+	feed, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		return fmt.Errorf("Error fetching feed: %w", err)
+	}
+	fmt.Println(feed)
 	return nil
 }
 
