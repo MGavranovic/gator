@@ -67,6 +67,7 @@ func main() {
 	cmds.register("reset", handleReset)
 	cmds.register("users", handleGetUsers)
 	cmds.register("agg", handeFetchRSSFeed)
+	cmds.register("addfeed", handleAddFeed)
 
 	if len(os.Args) < 2 {
 		fmt.Println("Not enough args")
@@ -199,6 +200,23 @@ func handeFetchRSSFeed(s *state, cmd command) error {
 		return fmt.Errorf("Error fetching feed: %w", err)
 	}
 	fmt.Println(feed)
+	return nil
+}
+
+func handleAddFeed(s *state, cmd command) error {
+	if len(cmd.args) != 2 {
+		return fmt.Errorf("Please provide the name and url")
+	}
+
+	currUser, err := s.db.GetUser(context.Background(), s.cfg.Current_user_name)
+	if err != nil {
+		return fmt.Errorf("Error getting user from DB: %w", err)
+	}
+	feedEntry, errCreatingFeed := s.db.CreateFeed(context.Background(), database.CreateFeedParams{ID: uuid.New(), CreatedAt: time.Now(), UpdatedAt: time.Now(), Name: cmd.args[0], Url: cmd.args[1], UserID: currUser.ID})
+	if errCreatingFeed != nil {
+		return fmt.Errorf("Error creating feed: %w", errCreatingFeed)
+	}
+	fmt.Println(feedEntry)
 	return nil
 }
 
